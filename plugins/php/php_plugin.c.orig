@@ -77,7 +77,7 @@ static int sapi_uwsgi_ub_write(const char *str, uint str_length TSRMLS_DC)
 	return str_length;
 }
 
-static int sapi_uwsgi_send_headers(sapi_headers_struct *sapi_headers TSRMLS_DC)
+static int sapi_uwsgi_send_headers(sapi_headers_struct *sapi_headers)
 {
 	sapi_header_struct *h;
 	zend_llist_position pos;
@@ -135,7 +135,7 @@ static int sapi_uwsgi_read_post(char *buffer, uint count_bytes TSRMLS_DC)
 }
 
 
-static char *sapi_uwsgi_read_cookies(TSRMLS_D)
+static char *sapi_uwsgi_read_cookies(void)
 {
 	uint16_t len = 0;
 	struct wsgi_request *wsgi_req = (struct wsgi_request *) SG(server_context);
@@ -518,7 +518,7 @@ static int php_uwsgi_startup(sapi_module_struct *sapi_module)
 	}
 }
 
-static void sapi_uwsgi_log_message(char *message TSRMLS_DC) {
+static void sapi_uwsgi_log_message(char *message) {
 
 	uwsgi_log("%s\n", message);
 }
@@ -558,10 +558,6 @@ int uwsgi_php_init(void) {
 
 	struct uwsgi_string_list *pset = uphp.set;
 	struct uwsgi_string_list *append_config = uphp.append_config;
-
-#ifdef ZTS
-        tsrm_startup(1, 1, 0, NULL);
-#endif
 
 	sapi_startup(&uwsgi_sapi_module);
 
@@ -663,13 +659,8 @@ int uwsgi_php_request(struct wsgi_request *wsgi_req) {
 	size_t real_filename_len = 0;
 	struct stat php_stat;
 	char *filename = NULL;
-	int force_empty_script_name = 0;
 
 	zend_file_handle file_handle;
-
-#ifdef ZTS
-	TSRMLS_FETCH();
-#endif
 
 	SG(server_context) = (void *) wsgi_req;
 
@@ -736,7 +727,6 @@ int uwsgi_php_request(struct wsgi_request *wsgi_req) {
 appready:
 		wsgi_req->path_info = "";
 		wsgi_req->path_info_len = 0;
-		force_empty_script_name = 1;
 		goto secure2;
 	}
 
@@ -866,19 +856,13 @@ secure2:
         }
 
 secure3:
-	if (force_empty_script_name) {
-		wsgi_req->script_name = "";
-		wsgi_req->script_name_len = 0;
+	wsgi_req->script_name = orig_path_info;
+	if (path_info) {
+		wsgi_req->script_name_len = path_info - orig_path_info;
 	}
 	else {
-		wsgi_req->script_name = orig_path_info;
-		if (path_info) {
-			wsgi_req->script_name_len = path_info - orig_path_info;
-		}
-		else {
-			wsgi_req->script_name_len = orig_path_info_len;
-		}
-	}
+		wsgi_req->script_name_len = orig_path_info_len;
+	}	
 
 #ifdef UWSGI_DEBUG
 	uwsgi_log("php filename = %s script_name = %.*s (%d) document_root = %.*s (%d)\n", real_filename, wsgi_req->script_name_len, wsgi_req->script_name, wsgi_req->script_name_len,
