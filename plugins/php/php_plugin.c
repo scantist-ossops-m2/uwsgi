@@ -16,6 +16,7 @@ struct uwsgi_php {
 #endif
 	struct uwsgi_string_list *vars;
 	char *docroot;
+	size_t docroot_len;
 	char *app;
 	char *app_qs;
 	char *fallback;
@@ -589,6 +590,8 @@ int uwsgi_php_init(void) {
 			uwsgi_log("unable to set php docroot to %s\n", orig_docroot);
 			exit(1);
 		}
+		uwsgi_log("PHP document root set to %s\n", uphp.docroot);
+		uphp.docroot_len = strlen(uphp.docroot);
 	}
 
 	if (uphp.sapi_name) {
@@ -776,6 +779,7 @@ oldstyle:
 	free(filename);
 	real_filename_len = strlen(real_filename);
 
+	// first check for valid doc roots
 	if (uphp.allowed_docroot) {
 		struct uwsgi_string_list *usl = uphp.allowed_docroot;
 		while(usl) {
@@ -786,6 +790,16 @@ oldstyle:
 		}
 		uwsgi_403(wsgi_req);
 		uwsgi_log("PHP security error: %s is not under an allowed docroot\n", real_filename);
+		return -1;
+	}
+	// then for default docroot (if any)
+	else if (uphp.docroot)
+	{
+		if (!uwsgi_starts_with(real_filename, real_filename_len, uphp.docroot, uphp.docroot_len)) {
+			goto secure;
+		}
+		uwsgi_403(wsgi_req);
+		uwsgi_log("PHP security error: %s is not under the default docroot\n", real_filename);
 		return -1;
 	}
 
